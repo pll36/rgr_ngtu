@@ -4,23 +4,20 @@
 #include <string>
 
 // Структура для хранения параметров аффинного шифра
-struct AffineCipher {
+struct AffineKey {
     int coefficient_a;
     int coefficient_b;
     int modulus;
     int inverse_a;
 };
 
-// Инициализация шифра с проверкой параметров
-bool initializeAffineCipher(AffineCipher& cipher);
+// Инициализация ключа
+bool initializeAffineKey(AffineKey& key, int a, int b, int modulus);
 
-// Прямой аффинный шифр
-std::string forwardAffineCipher(const std::string& text, const AffineCipher& cipher);
+// Прямой аффинный шифр (работает с любыми символами, включая русские)
+std::string encryptAffine(const std::string& text, const AffineKey& key);
 
 // Обратный аффинный шифр
-std::string inverseAffineCipher(const std::string& text, const AffineCipher& cipher);
-
-// Главная функция для запуска аффинного шифра из общего main
-void runAffineCipher();
+std::string decryptAffine(const std::string& text, const AffineKey& key);
 
 #endif
