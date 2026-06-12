@@ -1,7 +1,105 @@
 #include "affine_cipher.h"
-#include <cctype>
+#include <vector>
+#include <algorithm>
 
-// Расширенный алгоритм Евклида для нахождения обратного элемента
+// ============================================
+//  UTF-8 <-> UTF-32 conversion
+// ============================================
+
+static std::u32string utf8ToUtf32(const std::string& source)
+{
+    std::u32string result;
+    size_t index = 0;
+
+    while (index < source.size())
+    {
+        unsigned char byte = static_cast<unsigned char>(source[index]);
+        char32_t codepoint = 0;
+        int extraBytes = 0;
+
+        if (byte < 0x80)
+        {
+            codepoint = byte;
+            extraBytes = 0;
+        }
+        else if (byte < 0xC0)
+        {
+            ++index;
+            continue;
+        }
+        else if (byte < 0xE0)
+        {
+            codepoint = byte & 0x1F;
+            extraBytes = 1;
+        }
+        else if (byte < 0xF0)
+        {
+            codepoint = byte & 0x0F;
+            extraBytes = 2;
+        }
+        else
+        {
+            codepoint = byte & 0x07;
+            extraBytes = 3;
+        }
+
+        ++index;
+
+        for (int extra = 0; extra < extraBytes; ++extra)
+        {
+            if (index >= source.size())
+            {
+                break;
+            }
+
+            unsigned char continuation = static_cast<unsigned char>(source[index]);
+            codepoint = (codepoint << 6) | (continuation & 0x3F);
+            ++index;
+        }
+
+        result += codepoint;
+    }
+
+    return result;
+}
+
+static std::string utf32ToUtf8(const std::u32string& source)
+{
+    std::string result;
+
+    for (char32_t codepoint : source)
+    {
+        if (codepoint < 0x80)
+        {
+            result += static_cast<char>(codepoint);
+        }
+        else if (codepoint < 0x800)
+        {
+            result += static_cast<char>(0xC0 | (codepoint >> 6));
+            result += static_cast<char>(0x80 | (codepoint & 0x3F));
+        }
+        else if (codepoint < 0x10000)
+        {
+            result += static_cast<char>(0xE0 | (codepoint >> 12));
+            result += static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
+            result += static_cast<char>(0x80 | (codepoint & 0x3F));
+        }
+        else
+        {
+            result += static_cast<char>(0xF0 | (codepoint >> 18));
+            result += static_cast<char>(0x80 | ((codepoint >> 12) & 0x3F));
+            result += static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
+            result += static_cast<char>(0x80 | (codepoint & 0x3F));
+        }
+    }
+
+    return result;
+}
+
+// ============================================
+//  Affine cipher core functions
+// ============================================
+
 static int findModularInverse(int number, int modulo)
 {
     int original_modulo = modulo;
@@ -32,7 +130,6 @@ static int findModularInverse(int number, int modulo)
     return remainder_current;
 }
 
-// Наибольший общий делитель
 static int greatestCommonDivisor(int first, int second)
 {
     while (second != 0)
@@ -45,7 +142,6 @@ static int greatestCommonDivisor(int first, int second)
     return first;
 }
 
-// Инициализация ключа
 bool initializeAffineKey(AffineKey& key, int a, int b, int modulus)
 {
     if (modulus <= 0)
@@ -53,19 +149,16 @@ bool initializeAffineKey(AffineKey& key, int a, int b, int modulus)
         return false;
     }
 
-    key.coefficient_a = a;
-    key.coefficient_b = b;
-    key.modulus = modulus;
-
-    // Приводим a к диапазону [0, modulus-1]
-    key.coefficient_a %= modulus;
-
+    key.coefficient_a = a % modulus;
+    
     if (key.coefficient_a < 0)
     {
         key.coefficient_a += modulus;
     }
 
-    // Проверяем, что a взаимно просто с modulus
+    key.coefficient_b = b;
+    key.modulus = modulus;
+
     if (greatestCommonDivisor(key.coefficient_a, modulus) != 1)
     {
         return false;
@@ -76,64 +169,45 @@ bool initializeAffineKey(AffineKey& key, int a, int b, int modulus)
     return true;
 }
 
-// Прямой аффинный шифр
 std::string encryptAffine(const std::string& text, const AffineKey& key)
 {
-    std::string result;
+    std::u32string unicodeText = utf8ToUtf32(text);
+    std::u32string unicodeResult;
 
-    for (char character : text)
+    for (char32_t codepoint : unicodeText)
     {
-        if (std::isalpha(static_cast<unsigned char>(character)))
+        // Применяем аффинное преобразование к коду символа
+        int numeric_value = static_cast<int>(codepoint);
+        int encrypted_value = (key.coefficient_a * numeric_value + key.coefficient_b) % key.modulus;
+
+        if (encrypted_value < 0)
         {
-            bool is_uppercase = std::isupper(static_cast<unsigned char>(character));
-            int base = is_uppercase ? 'A' : 'a';
-
-            int numeric_value = character - base;
-            int encrypted_value = (key.coefficient_a * numeric_value + key.coefficient_b) % key.modulus;
-
-            if (encrypted_value < 0)
-            {
-                encrypted_value += key.modulus;
-            }
-
-            result += static_cast<char>(base + encrypted_value);
+            encrypted_value += key.modulus;
         }
-        else
-        {
-            result += character;
-        }
+
+        unicodeResult += static_cast<char32_t>(encrypted_value);
     }
 
-    return result;
+    return utf32ToUtf8(unicodeResult);
 }
 
-// Обратный аффинный шифр
 std::string decryptAffine(const std::string& text, const AffineKey& key)
 {
-    std::string result;
+    std::u32string unicodeText = utf8ToUtf32(text);
+    std::u32string unicodeResult;
 
-    for (char character : text)
+    for (char32_t codepoint : unicodeText)
     {
-        if (std::isalpha(static_cast<unsigned char>(character)))
+        int numeric_value = static_cast<int>(codepoint);
+        int decrypted_value = (key.inverse_a * (numeric_value - key.coefficient_b)) % key.modulus;
+
+        if (decrypted_value < 0)
         {
-            bool is_uppercase = std::isupper(static_cast<unsigned char>(character));
-            int base = is_uppercase ? 'A' : 'a';
-
-            int numeric_value = character - base;
-            int decrypted_value = (key.inverse_a * (numeric_value - key.coefficient_b)) % key.modulus;
-
-            if (decrypted_value < 0)
-            {
-                decrypted_value += key.modulus;
-            }
-
-            result += static_cast<char>(base + decrypted_value);
+            decrypted_value += key.modulus;
         }
-        else
-        {
-            result += character;
-        }
+
+        unicodeResult += static_cast<char32_t>(decrypted_value);
     }
 
-    return result;
+    return utf32ToUtf8(unicodeResult);
 }
