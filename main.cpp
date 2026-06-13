@@ -24,9 +24,7 @@ static int readInt(const std::string& prompt, int lowerBound, int upperBound)
         if (std::cin >> value)
         {
             if (value >= lowerBound && value <= upperBound)
-            {
                 return value;
-            }
             std::cout << "Error: enter a number from " << lowerBound
                 << " to " << upperBound << ".\n";
         }
@@ -46,9 +44,7 @@ static std::string readWord(const std::string& prompt)
     {
         std::cout << prompt;
         if (std::cin >> word && !word.empty())
-        {
             return word;
-        }
         std::cout << "Error: input must not be empty. Try again.\n";
         std::cin.clear();
         std::cin.ignore(10000, '\n');
@@ -84,7 +80,7 @@ static void printResult(const std::string& original,
 }
 
 // ============================================================
-//  Maxim Kinstler menu — Columnar Transposition & TEA
+//  Egor Kinstler menu -- Columnar Transposition & TEA
 // ============================================================
 
 static void menuKinstler()
@@ -126,7 +122,7 @@ static void menuKinstler()
 }
 
 // ============================================================
-//  Egor Rubtsov menu — Affine cipher
+//  Maxim Rubtsov menu -- Affine cipher
 // ============================================================
 
 static void menuRubtsov()
@@ -173,7 +169,21 @@ static void menuRubtsov()
 }
 
 // ============================================================
-//  Alina Miskova menu — Shamir & RSA
+//  Primality check helper
+// ============================================================
+
+static bool isPrime(int n)
+{
+    if (n < 2) return false;
+    if (n == 2) return true;
+    if (n % 2 == 0) return false;
+    for (int i = 3; i * i <= n; i += 2)
+        if (n % i == 0) return false;
+    return true;
+}
+
+// ============================================================
+//  Alina Miskova menu -- Shamir & RSA
 // ============================================================
 
 static void menuMiskova()
@@ -195,7 +205,33 @@ static void menuMiskova()
             if (readFile(filename, text)) break;
         }
 
-        int modulus = readInt("Enter modulus (> 255): ", 256, 1000000);
+        // Get two primes p and q, compute modulus = p*q > 255
+        int p, q, modulus;
+        while (true)
+        {
+            p = readInt("Enter prime number p: ", 2, 1000000);
+            if (!isPrime(p))
+            {
+                std::cout << "Error: " << p << " is not prime. Try again.\n";
+                continue;
+            }
+            q = readInt("Enter prime number q (p*q must be > 255): ", 2, 1000000);
+            if (!isPrime(q))
+            {
+                std::cout << "Error: " << q << " is not prime. Try again.\n";
+                continue;
+            }
+            modulus = p * q;
+            if (modulus <= 255)
+            {
+                std::cout << "Error: p*q = " << modulus
+                    << ", must be > 255. Choose larger primes.\n";
+                continue;
+            }
+            std::cout << "Modulus n = p*q = " << modulus << "\n";
+            break;
+        }
+
         int keyEnc = readInt("Enter encryption key: ", 1, modulus - 1);
         int keyDec = readInt("Enter decryption key: ", 1, modulus - 1);
 
