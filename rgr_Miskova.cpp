@@ -26,8 +26,8 @@ string encryptShamir(const string& plaintext, int modulus, int key_enc) {
     }
 
     string ciphertext;
-    for (unsigned char ch : plaintext) {
-        int byte_val = static_cast<int>(ch);
+    for (unsigned char ch : plaintext) { 
+        int byte_val = static_cast<int>(ch); // Byte -> int
         if (byte_val >= modulus) {
             throw runtime_error("Byte value >= modulus. Increase modulus (must be > 255).");
         }
@@ -43,12 +43,12 @@ string decryptShamir(const string& ciphertext, int modulus, int key_dec) {
         throw invalid_argument("Modulus and key must be positive");
     }
 
-    istringstream iss(ciphertext);
-    string plaintext;
-    string line;
-    while (getline(iss, line)) {
+    istringstream iss(ciphertext); // Allows to read numbers from a string as if from a file
+    string plaintext; // There are dec bytes
+    string line; // There are dec lines
+    while (getline(iss, line)) { // Cycle read lines
         if (line.empty()) continue;
-        int enc_num = stoi(line);
+        int enc_num = stoi(line); // Line -> number
         int dec = modpow(enc_num, key_dec, modulus);
         plaintext.push_back(static_cast<char>(dec));
     }
@@ -63,7 +63,7 @@ string encryptRSA(const string& plaintext, int modulus, int key_enc) {
 
     string ciphertext;
     for (unsigned char ch : plaintext) {
-        int byte_val = static_cast<int>(ch);
+        int byte_val = static_cast<int>(ch); // Byte -> int
         if (byte_val >= modulus) {
             throw runtime_error("Byte value >= modulus. Increase modulus (p*q > 255).");
         }
@@ -79,12 +79,12 @@ string decryptRSA(const string& ciphertext, int modulus, int key_dec) {
         throw invalid_argument("Modulus and key must be positive");
     }
 
-    istringstream iss(ciphertext);
-    string plaintext;
-    string line;
-    while (getline(iss, line)) {
+    istringstream iss(ciphertext); // Allows to read numbers from a string as if from a file
+    string plaintext; // There are dec bytes
+    string line; // There are dec lines
+    while (getline(iss, line)) { // Cycle read lines
         if (line.empty()) continue;
-        int enc_num = stoi(line);
+        int enc_num = stoi(line); // Line -> number
         int dec = modpow(enc_num, key_dec, modulus);
         plaintext.push_back(static_cast<char>(dec));
     }
