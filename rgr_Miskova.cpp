@@ -27,7 +27,7 @@ string encryptShamir(const string& plaintext, int modulus, int key_enc) {
 
     string ciphertext;
     for (unsigned char ch : plaintext) { 
-        int byte_val = static_cast<int>(ch); // Byte -> int
+        int byte_val = static_cast<int>(ch); // Byte -> int 
         if (byte_val >= modulus) {
             throw runtime_error("Byte value >= modulus. Increase modulus (must be > 255).");
         }
