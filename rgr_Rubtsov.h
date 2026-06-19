@@ -18,10 +18,10 @@ struct AffineKey {
 // Инициализация ключа
 bool initializeAffineKey(AffineKey& key, int a, int b, int modulus);
 
-// Прямой аффинный шифр (шифрование)
+// Прямой аффинный шифр (шифрование) - побайтовое шифрование
 std::string encryptAffine(const std::string& text, const AffineKey& key);
 
-// Обратный аффинный шифр (дешифрование)
+// Обратный аффинный шифр (дешифрование) - побайтовое дешифрование
 std::string decryptAffine(const std::string& text, const AffineKey& key);
 
 // Универсальная функция с выбором направления
@@ -30,13 +30,13 @@ std::string decryptAffine(const std::string& text, const AffineKey& key);
 std::string processAffine(const std::string& text, const AffineKey& key, bool mode);
 
 // ============================================
-// ШИФР ВИЖЕНЕРА
+// ШИФР ВИЖЕНЕРА (побайтовый)
 // ============================================
 
-// Шифрование Виженера (работает с любыми символами)
+// Шифрование Виженера (побайтовое, работает с любыми символами)
 std::string encryptVigenere(const std::string& text, const std::string& keyword);
 
-// Дешифрование Виженера
+// Дешифрование Виженера (побайтовое)
 std::string decryptVigenere(const std::string& text, const std::string& keyword);
 
 // Универсальная функция для Виженера с выбором направления
