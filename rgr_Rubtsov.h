@@ -20,4 +20,7 @@ std::string encryptAffine(const std::string& text, const AffineKey& key);
 // Обратный аффинный шифр
 std::string decryptAffine(const std::string& text, const AffineKey& key);
 
+// Универсальная функция для шифрования/дешифрования
+std::string processAffine(const std::string& text, const AffineKey& key, bool encrypt);
+
 #endif
