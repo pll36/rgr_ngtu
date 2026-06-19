@@ -4,110 +4,7 @@
 #include <cctype>
 
 // ============================================
-//  UTF-8 <-> UTF-32 conversion
-// ============================================
-
-static std::u32string utf8ToUtf32(const std::string& source)
-{
-    std::u32string result;
-    size_t index = 0;
-
-    while (index < source.size())
-    {
-        unsigned char byte = static_cast<unsigned char>(source[index]);
-        char32_t codepoint = 0;
-        int extraBytes = 0;
-
-        if (byte < 0x80)
-        {
-            codepoint = byte;
-            extraBytes = 0;
-        }
-        else if (byte < 0xC0)
-        {
-            ++index;
-            continue;
-        }
-        else if (byte < 0xE0)
-        {
-            codepoint = byte & 0x1F;
-            extraBytes = 1;
-        }
-        else if (byte < 0xF0)
-        {
-            codepoint = byte & 0x0F;
-            extraBytes = 2;
-        }
-        else if (byte < 0xF8)
-        {
-            codepoint = byte & 0x07;
-            extraBytes = 3;
-        }
-        else
-        {
-            ++index;
-            continue;
-        }
-
-        ++index;
-
-        for (int extra = 0; extra < extraBytes; ++extra)
-        {
-            if (index >= source.size())
-            {
-                break;
-            }
-
-            unsigned char continuation = static_cast<unsigned char>(source[index]);
-            if ((continuation & 0xC0) != 0x80)
-            {
-                break;
-            }
-            codepoint = (codepoint << 6) | (continuation & 0x3F);
-            ++index;
-        }
-
-        result += codepoint;
-    }
-
-    return result;
-}
-
-static std::string utf32ToUtf8(const std::u32string& source)
-{
-    std::string result;
-
-    for (char32_t codepoint : source)
-    {
-        if (codepoint < 0x80)
-        {
-            result += static_cast<char>(codepoint);
-        }
-        else if (codepoint < 0x800)
-        {
-            result += static_cast<char>(0xC0 | (codepoint >> 6));
-            result += static_cast<char>(0x80 | (codepoint & 0x3F));
-        }
-        else if (codepoint < 0x10000)
-        {
-            result += static_cast<char>(0xE0 | (codepoint >> 12));
-            result += static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
-            result += static_cast<char>(0x80 | (codepoint & 0x3F));
-        }
-        else if (codepoint < 0x110000)
-        {
-            result += static_cast<char>(0xF0 | (codepoint >> 18));
-            result += static_cast<char>(0x80 | ((codepoint >> 12) & 0x3F));
-            result += static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
-            result += static_cast<char>(0x80 | (codepoint & 0x3F));
-        }
-    }
-
-    return result;
-}
-
-// ============================================
-//  АФФИННЫЙ ШИФР
+//  ВСПОМОГАТЕЛЬНЫЕ МАТЕМАТИЧЕСКИЕ ФУНКЦИИ
 // ============================================
 
 static int findModularInverse(int number, int modulo)
@@ -148,6 +45,10 @@ static int greatestCommonDivisor(int first, int second)
     return first;
 }
 
+// ============================================
+//  АФФИННЫЙ ШИФР (ПОБАЙТОВЫЙ)
+// ============================================
+
 bool initializeAffineKey(AffineKey& key, int a, int b, int modulus)
 {
     if (modulus <= 0)
@@ -181,12 +82,12 @@ bool initializeAffineKey(AffineKey& key, int a, int b, int modulus)
 
 std::string encryptAffine(const std::string& text, const AffineKey& key)
 {
-    std::u32string unicodeText = utf8ToUtf32(text);
-    std::u32string unicodeResult;
+    std::string result;
+    result.reserve(text.size());
 
-    for (char32_t codepoint : unicodeText)
+    for (unsigned char byte : text)
     {
-        int numeric_value = static_cast<int>(codepoint);
+        int numeric_value = static_cast<int>(byte);
         int encrypted_value = (key.coefficient_a * numeric_value + key.coefficient_b) % key.modulus;
 
         if (encrypted_value < 0)
@@ -194,20 +95,20 @@ std::string encryptAffine(const std::string& text, const AffineKey& key)
             encrypted_value += key.modulus;
         }
 
-        unicodeResult += static_cast<char32_t>(encrypted_value);
+        result += static_cast<char>(encrypted_value);
     }
 
-    return utf32ToUtf8(unicodeResult);
+    return result;
 }
 
 std::string decryptAffine(const std::string& text, const AffineKey& key)
 {
-    std::u32string unicodeText = utf8ToUtf32(text);
-    std::u32string unicodeResult;
+    std::string result;
+    result.reserve(text.size());
 
-    for (char32_t codepoint : unicodeText)
+    for (unsigned char byte : text)
     {
-        int numeric_value = static_cast<int>(codepoint);
+        int numeric_value = static_cast<int>(byte);
         int decrypted_value = key.inverse_a * (numeric_value - key.coefficient_b);
         decrypted_value %= key.modulus;
 
@@ -216,10 +117,10 @@ std::string decryptAffine(const std::string& text, const AffineKey& key)
             decrypted_value += key.modulus;
         }
 
-        unicodeResult += static_cast<char32_t>(decrypted_value);
+        result += static_cast<char>(decrypted_value);
     }
 
-    return utf32ToUtf8(unicodeResult);
+    return result;
 }
 
 std::string processAffine(const std::string& text, const AffineKey& key, bool mode)
@@ -235,12 +136,12 @@ std::string processAffine(const std::string& text, const AffineKey& key, bool mo
 }
 
 // ============================================
-//  ШИФР ВИЖЕНЕРА
+//  ШИФР ВИЖЕНЕРА (ПОБАЙТОВЫЙ)
 // ============================================
 
-static std::u32string prepareVigenereKey(const std::u32string& text, const std::u32string& keyword)
+static std::string prepareVigenereKeyBytes(const std::string& text, const std::string& keyword)
 {
-    std::u32string result;
+    std::string result;
     size_t keywordIndex = 0;
     size_t keywordLength = keyword.length();
 
@@ -249,7 +150,9 @@ static std::u32string prepareVigenereKey(const std::u32string& text, const std::
         return result;
     }
 
-    for (size_t i = 0; i < text.length(); ++i)
+    result.reserve(text.size());
+
+    for (size_t i = 0; i < text.size(); ++i)
     {
         result += keyword[keywordIndex % keywordLength];
         ++keywordIndex;
@@ -260,64 +163,54 @@ static std::u32string prepareVigenereKey(const std::u32string& text, const std::
 
 std::string encryptVigenere(const std::string& text, const std::string& keyword)
 {
-    std::u32string unicodeText = utf8ToUtf32(text);
-    std::u32string unicodeKeyword = utf8ToUtf32(keyword);
-    std::u32string unicodeResult;
-
-    if (unicodeKeyword.empty())
+    if (keyword.empty())
     {
-        return text;  // Если ключ пустой, возвращаем исходный текст
+        return text;
     }
 
-    std::u32string extendedKey = prepareVigenereKey(unicodeText, unicodeKeyword);
+    std::string extendedKey = prepareVigenereKeyBytes(text, keyword);
+    std::string result;
+    result.reserve(text.size());
 
-    for (size_t i = 0; i < unicodeText.size(); ++i)
+    for (size_t i = 0; i < text.size(); ++i)
     {
-        char32_t textChar = unicodeText[i];
-        char32_t keyChar = extendedKey[i];
+        unsigned char textByte = static_cast<unsigned char>(text[i]);
+        unsigned char keyByte = static_cast<unsigned char>(extendedKey[i]);
 
-        // Простое сложение кодов символов (работает с любыми символами)
-        int encrypted_value = static_cast<int>(textChar) + static_cast<int>(keyChar);
-        // Ограничиваем диапазон 32-битным числом
-        encrypted_value %= 0x110000;
-
-        unicodeResult += static_cast<char32_t>(encrypted_value);
+        int encrypted_value = (textByte + keyByte) % 256;
+        result += static_cast<char>(encrypted_value);
     }
 
-    return utf32ToUtf8(unicodeResult);
+    return result;
 }
 
 std::string decryptVigenere(const std::string& text, const std::string& keyword)
 {
-    std::u32string unicodeText = utf8ToUtf32(text);
-    std::u32string unicodeKeyword = utf8ToUtf32(keyword);
-    std::u32string unicodeResult;
-
-    if (unicodeKeyword.empty())
+    if (keyword.empty())
     {
-        return text;  // Если ключ пустой, возвращаем исходный текст
+        return text;
     }
 
-    std::u32string extendedKey = prepareVigenereKey(unicodeText, unicodeKeyword);
+    std::string extendedKey = prepareVigenereKeyBytes(text, keyword);
+    std::string result;
+    result.reserve(text.size());
 
-    for (size_t i = 0; i < unicodeText.size(); ++i)
+    for (size_t i = 0; i < text.size(); ++i)
     {
-        char32_t textChar = unicodeText[i];
-        char32_t keyChar = extendedKey[i];
+        unsigned char textByte = static_cast<unsigned char>(text[i]);
+        unsigned char keyByte = static_cast<unsigned char>(extendedKey[i]);
 
-        // Вычитание кодов символов
-        int decrypted_value = static_cast<int>(textChar) - static_cast<int>(keyChar);
-        // Ограничиваем диапазон (делаем положительным)
+        int decrypted_value = textByte - keyByte;
         while (decrypted_value < 0)
         {
-            decrypted_value += 0x110000;
+            decrypted_value += 256;
         }
-        decrypted_value %= 0x110000;
+        decrypted_value %= 256;
 
-        unicodeResult += static_cast<char32_t>(decrypted_value);
+        result += static_cast<char>(decrypted_value);
     }
 
-    return utf32ToUtf8(unicodeResult);
+    return result;
 }
 
 std::string processVigenere(const std::string& text, const std::string& keyword, bool encrypt)
