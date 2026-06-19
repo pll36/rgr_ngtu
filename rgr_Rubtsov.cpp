@@ -37,10 +37,16 @@ static std::u32string utf8ToUtf32(const std::string& source)
             codepoint = byte & 0x0F;
             extraBytes = 2;
         }
-        else
+        else if (byte < 0xF8)
         {
             codepoint = byte & 0x07;
             extraBytes = 3;
+        }
+        else
+        {
+            // Некорректный байт, пропускаем
+            ++index;
+            continue;
         }
 
         ++index;
@@ -53,6 +59,11 @@ static std::u32string utf8ToUtf32(const std::string& source)
             }
 
             unsigned char continuation = static_cast<unsigned char>(source[index]);
+            if ((continuation & 0xC0) != 0x80)
+            {
+                // Некорректный continuation byte
+                break;
+            }
             codepoint = (codepoint << 6) | (continuation & 0x3F);
             ++index;
         }
@@ -84,13 +95,14 @@ static std::string utf32ToUtf8(const std::u32string& source)
             result += static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
             result += static_cast<char>(0x80 | (codepoint & 0x3F));
         }
-        else
+        else if (codepoint < 0x110000)
         {
             result += static_cast<char>(0xF0 | (codepoint >> 18));
             result += static_cast<char>(0x80 | ((codepoint >> 12) & 0x3F));
             result += static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
             result += static_cast<char>(0x80 | (codepoint & 0x3F));
         }
+        // Игнорируем некорректные codepoint'ы
     }
 
     return result;
@@ -102,32 +114,29 @@ static std::string utf32ToUtf8(const std::u32string& source)
 
 static int findModularInverse(int number, int modulo)
 {
+    // Расширенный алгоритм Евклида
     int original_modulo = modulo;
-    int remainder_prev = 0;
-    int remainder_current = 1;
-    int temp_number = number;
-    int temp_modulo = modulo;
+    int x0 = 0, x1 = 1;
+    int a = number, b = modulo;
 
-    while (temp_number > 1)
+    while (a > 1)
     {
-        int quotient = temp_number / temp_modulo;
-        int temp = temp_modulo;
-        temp_modulo = temp_number % temp_modulo;
-        temp_number = temp;
+        int quotient = a / b;
+        int temp = b;
+        b = a % b;
+        a = temp;
 
-        int remainder_next = remainder_prev - quotient * remainder_current;
-        remainder_prev = remainder_current;
-        remainder_current = remainder_next;
+        int x_temp = x1;
+        x1 = x0 - quotient * x1;
+        x0 = x_temp;
     }
 
-    remainder_current %= original_modulo;
-
-    if (remainder_current < 0)
+    if (x1 < 0)
     {
-        remainder_current += original_modulo;
+        x1 += original_modulo;
     }
 
-    return remainder_current;
+    return x1;
 }
 
 static int greatestCommonDivisor(int first, int second)
@@ -149,16 +158,23 @@ bool initializeAffineKey(AffineKey& key, int a, int b, int modulus)
         return false;
     }
 
+    // Приводим a к диапазону [0, modulus-1]
     key.coefficient_a = a % modulus;
-    
     if (key.coefficient_a < 0)
     {
         key.coefficient_a += modulus;
     }
 
-    key.coefficient_b = b;
+    // Приводим b к диапазону [0, modulus-1]
+    key.coefficient_b = b % modulus;
+    if (key.coefficient_b < 0)
+    {
+        key.coefficient_b += modulus;
+    }
+
     key.modulus = modulus;
 
+    // Проверяем, что a взаимно просто с modulus
     if (greatestCommonDivisor(key.coefficient_a, modulus) != 1)
     {
         return false;
@@ -199,7 +215,8 @@ std::string decryptAffine(const std::string& text, const AffineKey& key)
     for (char32_t codepoint : unicodeText)
     {
         int numeric_value = static_cast<int>(codepoint);
-        int decrypted_value = (key.inverse_a * (numeric_value - key.coefficient_b)) % key.modulus;
+        int decrypted_value = key.inverse_a * (numeric_value - key.coefficient_b);
+        decrypted_value %= key.modulus;
 
         if (decrypted_value < 0)
         {
@@ -210,4 +227,17 @@ std::string decryptAffine(const std::string& text, const AffineKey& key)
     }
 
     return utf32ToUtf8(unicodeResult);
+}
+
+// Универсальная функция для шифрования/дешифрования
+std::string processAffine(const std::string& text, const AffineKey& key, bool encrypt)
+{
+    if (encrypt)
+    {
+        return encryptAffine(text, key);
+    }
+    else
+    {
+        return decryptAffine(text, key);
+    }
 }
