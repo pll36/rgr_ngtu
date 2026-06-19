@@ -1,6 +1,7 @@
 #include "rgr_Rubtsov.h"
 #include <vector>
 #include <algorithm>
+#include <cctype>
 
 // ============================================
 //  UTF-8 <-> UTF-32 conversion
@@ -44,7 +45,6 @@ static std::u32string utf8ToUtf32(const std::string& source)
         }
         else
         {
-            // Некорректный байт, пропускаем
             ++index;
             continue;
         }
@@ -61,7 +61,6 @@ static std::u32string utf8ToUtf32(const std::string& source)
             unsigned char continuation = static_cast<unsigned char>(source[index]);
             if ((continuation & 0xC0) != 0x80)
             {
-                // Некорректный continuation byte
                 break;
             }
             codepoint = (codepoint << 6) | (continuation & 0x3F);
@@ -102,19 +101,17 @@ static std::string utf32ToUtf8(const std::u32string& source)
             result += static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
             result += static_cast<char>(0x80 | (codepoint & 0x3F));
         }
-        // Игнорируем некорректные codepoint'ы
     }
 
     return result;
 }
 
 // ============================================
-//  Affine cipher core functions
+//  АФФИННЫЙ ШИФР
 // ============================================
 
 static int findModularInverse(int number, int modulo)
 {
-    // Расширенный алгоритм Евклида
     int original_modulo = modulo;
     int x0 = 0, x1 = 1;
     int a = number, b = modulo;
@@ -158,14 +155,12 @@ bool initializeAffineKey(AffineKey& key, int a, int b, int modulus)
         return false;
     }
 
-    // Приводим a к диапазону [0, modulus-1]
     key.coefficient_a = a % modulus;
     if (key.coefficient_a < 0)
     {
         key.coefficient_a += modulus;
     }
 
-    // Приводим b к диапазону [0, modulus-1]
     key.coefficient_b = b % modulus;
     if (key.coefficient_b < 0)
     {
@@ -174,7 +169,6 @@ bool initializeAffineKey(AffineKey& key, int a, int b, int modulus)
 
     key.modulus = modulus;
 
-    // Проверяем, что a взаимно просто с modulus
     if (greatestCommonDivisor(key.coefficient_a, modulus) != 1)
     {
         return false;
@@ -192,7 +186,6 @@ std::string encryptAffine(const std::string& text, const AffineKey& key)
 
     for (char32_t codepoint : unicodeText)
     {
-        // Применяем аффинное преобразование к коду символа
         int numeric_value = static_cast<int>(codepoint);
         int encrypted_value = (key.coefficient_a * numeric_value + key.coefficient_b) % key.modulus;
 
@@ -229,15 +222,132 @@ std::string decryptAffine(const std::string& text, const AffineKey& key)
     return utf32ToUtf8(unicodeResult);
 }
 
-// Универсальная функция для шифрования/дешифрования
-std::string processAffine(const std::string& text, const AffineKey& key, bool encrypt)
+std::string processAffine(const std::string& text, const AffineKey& key, bool mode)
 {
-    if (encrypt)
+    if (mode)
     {
         return encryptAffine(text, key);
     }
     else
     {
         return decryptAffine(text, key);
+    }
+}
+
+// ============================================
+//  ШИФР ВИЖЕНЕРА
+// ============================================
+
+static std::u32string prepareVigenereKey(const std::u32string& text, const std::u32string& keyword)
+{
+    std::u32string result;
+    size_t keywordIndex = 0;
+    size_t keywordLength = keyword.length();
+
+    if (keywordLength == 0)
+    {
+        return result;
+    }
+
+    for (size_t i = 0; i < text.length(); ++i)
+    {
+        result += keyword[keywordIndex % keywordLength];
+        ++keywordIndex;
+    }
+
+    return result;
+}
+
+std::string encryptVigenere(const std::string& text, const std::string& keyword)
+{
+    std::u32string unicodeText = utf8ToUtf32(text);
+    std::u32string unicodeKeyword = utf8ToUtf32(keyword);
+    std::u32string unicodeResult;
+
+    if (unicodeKeyword.empty())
+    {
+        return text;  // Если ключ пустой, возвращаем исходный текст
+    }
+
+    std::u32string extendedKey = prepareVigenereKey(unicodeText, unicodeKeyword);
+
+    for (size_t i = 0; i < unicodeText.size(); ++i)
+    {
+        char32_t textChar = unicodeText[i];
+        char32_t keyChar = extendedKey[i];
+
+        // Простое сложение кодов символов (работает с любыми символами)
+        int encrypted_value = static_cast<int>(textChar) + static_cast<int>(keyChar);
+        // Ограничиваем диапазон 32-битным числом
+        encrypted_value %= 0x110000;
+
+        unicodeResult += static_cast<char32_t>(encrypted_value);
+    }
+
+    return utf32ToUtf8(unicodeResult);
+}
+
+std::string decryptVigenere(const std::string& text, const std::string& keyword)
+{
+    std::u32string unicodeText = utf8ToUtf32(text);
+    std::u32string unicodeKeyword = utf8ToUtf32(keyword);
+    std::u32string unicodeResult;
+
+    if (unicodeKeyword.empty())
+    {
+        return text;  // Если ключ пустой, возвращаем исходный текст
+    }
+
+    std::u32string extendedKey = prepareVigenereKey(unicodeText, unicodeKeyword);
+
+    for (size_t i = 0; i < unicodeText.size(); ++i)
+    {
+        char32_t textChar = unicodeText[i];
+        char32_t keyChar = extendedKey[i];
+
+        // Вычитание кодов символов
+        int decrypted_value = static_cast<int>(textChar) - static_cast<int>(keyChar);
+        // Ограничиваем диапазон (делаем положительным)
+        while (decrypted_value < 0)
+        {
+            decrypted_value += 0x110000;
+        }
+        decrypted_value %= 0x110000;
+
+        unicodeResult += static_cast<char32_t>(decrypted_value);
+    }
+
+    return utf32ToUtf8(unicodeResult);
+}
+
+std::string processVigenere(const std::string& text, const std::string& keyword, bool encrypt)
+{
+    if (encrypt)
+    {
+        return encryptVigenere(text, keyword);
+    }
+    else
+    {
+        return decryptVigenere(text, keyword);
+    }
+}
+
+// ============================================
+//  УНИВЕРСАЛЬНАЯ ФУНКЦИЯ ДЛЯ ЛЮБОГО ШИФРА
+// ============================================
+
+std::string processCipher(const std::string& text, 
+                          const AffineKey& affineKey,
+                          const std::string& vigenereKey,
+                          CipherType type, 
+                          bool encrypt)
+{
+    if (type == AFFINE_CIPHER)
+    {
+        return processAffine(text, affineKey, encrypt);
+    }
+    else // VIGENERE_CIPHER
+    {
+        return processVigenere(text, vigenereKey, encrypt);
     }
 }
